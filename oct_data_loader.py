@@ -2,6 +2,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from scipy.io import loadmat, savemat
+import cupy as cp
 import numpy as np
 
 def oct_loader(input_folder, output_folder):
@@ -41,37 +42,37 @@ def process_file(input_folder, output_folder, file_name):
     freq_domain_data = mat_data['images']
     print(f"Frequency domain data shape: {freq_domain_data.shape}")
 
-    # Apply IFFT to recover spatial domain
-    spatial_domain = recover_spatial_domain(freq_domain_data)
+    # Apply IFFT to recover spatial domain in chunks
+    spatial_domain = recover_spatial_domain_in_chunks(freq_domain_data)
 
     # Save the recovered data
     output_file_path = os.path.join(output_folder, f"raw_{file_name}")
     savemat(output_file_path, {'raw': spatial_domain})
     print(f"Saved: {output_file_path}")
 
-def recover_spatial_domain(freq_domain_data):
+def recover_spatial_domain_in_chunks(freq_domain_data):
     """
-    Recover spatial domain data from frequency domain using IFFT.
+    Recover spatial domain data from frequency domain using IFFT in smaller chunks.
     """
-    spatial_domain = np.zeros_like(freq_domain_data, dtype=np.float32)
+    num_slices = freq_domain_data.shape[2]
+    chunk_size = 10  # Process 10 slices at a time (adjust based on GPU memory)
+    spatial_domain = np.zeros_like(freq_domain_data, dtype=np.complex64)
 
-    for i in range(freq_domain_data.shape[2]):  # Process each slice
-        # Get frequency domain slice
-        freq_slice = freq_domain_data[:, :, i]
+    for start_idx in range(0, num_slices, chunk_size):
+        end_idx = min(start_idx + chunk_size, num_slices)
+        print(f"Processing slices {start_idx} to {end_idx-1}...")
 
-        # Apply IFFT directly (since data is already in frequency domain)
-        spatial_slice = np.fft.ifft2(freq_slice)
+        # Move chunk to GPU
+        freq_chunk_gpu = cp.asarray(freq_domain_data[:, :, start_idx:end_idx], dtype=cp.complex64)
 
-        # Get magnitude (real-valued image)
-        magnitude = np.abs(spatial_slice)
+        # Apply IFFT on GPU
+        spatial_chunk_gpu = cp.fft.ifft2(freq_chunk_gpu, axes=(0, 1))
 
-        # Apply log transformation to enhance contrast
-        magnitude = np.log1p(magnitude)
+        # Move chunk back to CPU
+        spatial_domain[:, :, start_idx:end_idx] = cp.asnumpy(spatial_chunk_gpu)
 
-        # Normalize to [0,1] range
-        magnitude = (magnitude - magnitude.min()) / (magnitude.max() - magnitude.min())
-
-        spatial_domain[:, :, i] = magnitude
+        # Free GPU memory
+        cp._default_memory_pool.free_all_blocks()
 
     return spatial_domain
 
