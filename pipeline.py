@@ -45,9 +45,12 @@ def process_file(input_folder, output_folder, file_name):
     # Apply DC subtraction and FFT
     freq_domain = process_oct_data(spatial_domain_data)
 
+    # Convert complex values to real (magnitude or real part)
+    freq_domain_real = np.abs(freq_domain)  # Use np.real(freq_domain) if only real part is needed
+
     # Save the processed data
     output_file_path = os.path.join(output_folder, f"processed_{file_name}")
-    savemat(output_file_path, {'images': freq_domain})
+    savemat(output_file_path, {'images': freq_domain_real})
     print(f"Saved: {output_file_path}")
 
 def process_oct_data(spatial_domain_data):
@@ -63,7 +66,7 @@ def process_oct_data(spatial_domain_data):
         print(f"Processing slices {start_idx} to {end_idx-1}...")
 
         # Move chunk to GPU
-        spatial_chunk_gpu = cp.asarray(spatial_domain_data[:, :, start_idx:end_idx], dtype=cp.float32)
+        spatial_chunk_gpu = cp.asarray(spatial_domain_data[:, :, start_idx:end_idx], dtype=cp.complex64)
 
         # Subtract DC component
         spatial_chunk_gpu = subtract_dc_component(spatial_chunk_gpu)
@@ -81,10 +84,10 @@ def process_oct_data(spatial_domain_data):
 
 def subtract_dc_component(spatial_chunk_gpu):
     """
-    Subtract the DC component (mean intensity) from the spatial domain data.
+    Subtract the DC component (mean intensity) for each pixel across all slices.
     """
-    # Compute the mean intensity across each slice (DC component)
-    dc_component = cp.mean(spatial_chunk_gpu, axis=(0, 1), keepdims=True)
+    # Compute the DC component per pixel (mean across slices)
+    dc_component = cp.mean(spatial_chunk_gpu, axis=2,dtype = cp.float32, keepdims=True)
 
     # Subtract the mean from the entire image chunk
     return spatial_chunk_gpu - dc_component
