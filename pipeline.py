@@ -3,6 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from scipy.io import loadmat, savemat
 import cupy as cp
+import cupyx.scipy.ndimage as cpx_ndimage
 import numpy as np
 
 def oct_loader(input_folder, output_folder):
@@ -70,6 +71,9 @@ def process_oct_data(spatial_domain_data):
 
         # Subtract DC component
         spatial_chunk_gpu = subtract_dc_component(spatial_chunk_gpu)
+
+        # Apply Gaussian Filtering on GPU
+        spatial_chunk_gpu = cpx_ndimage.gaussian_filter(spatial_chunk_gpu, sigma=1)
 
         # Apply FFT on GPU
         freq_chunk_gpu = cp.fft.fft2(spatial_chunk_gpu, axes=(0, 1))
