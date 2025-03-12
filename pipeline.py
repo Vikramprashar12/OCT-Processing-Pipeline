@@ -3,6 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from scipy.io import loadmat, savemat
 import cupy as cp
+import cupyx.scipy.ndimage as cpx_ndimage
 import numpy as np
 from cupyx.scipy.ndimage import zoom
 
