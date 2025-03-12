@@ -6,6 +6,7 @@ import cupy as cp
 import numpy as np
 from cupyx.scipy.ndimage import zoom
 
+
 def oct_loader(input_folder, output_folder):
     """
     Load .mat files containing spatial domain OCT data,
@@ -19,7 +20,8 @@ def oct_loader(input_folder, output_folder):
     # Process files concurrently using ThreadPoolExecutor
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(process_file, input_folder, output_folder, file_name)
+            executor.submit(process_file, input_folder,
+                            output_folder, file_name)
             for file_name in mat_files
         ]
 
@@ -28,6 +30,7 @@ def oct_loader(input_folder, output_folder):
                 future.result()  # Ensure exceptions are raised if any
             except Exception as e:
                 print(f"Error processing file: {e}")
+
 
 def process_file(input_folder, output_folder, file_name):
     """
@@ -50,16 +53,18 @@ def process_file(input_folder, output_folder, file_name):
     freq_domain = process_oct_data(spatial_domain_data)
 
     # Convert complex values to real (magnitude or real part)
-    freq_domain_real = np.abs(freq_domain)  # Use np.real(freq_domain) if only real part is needed
+    # Use np.real(freq_domain) if only real part is needed
+    freq_domain_real = np.abs(freq_domain)
 
     # Save the processed data
     output_file_path = os.path.join(output_folder, f"processed_{file_name}")
     savemat(output_file_path, {'images': freq_domain_real})
     print(f"Saved: {output_file_path}")
 
+
 def process_oct_data(spatial_domain_data):
     """
-    Perform DC subtraction and recover frequency domain using FFT.
+    Perform DC subtraction, apply dispersion compensation, and recover frequency domain using FFT.
     """
     num_slices = spatial_domain_data.shape[2]
     chunk_size = 10  # Process 10 slices at a time (adjust based on GPU memory)
@@ -70,12 +75,16 @@ def process_oct_data(spatial_domain_data):
         print(f"Processing slices {start_idx} to {end_idx-1}...")
 
         # Move chunk to GPU
-        spatial_chunk_gpu = cp.asarray(spatial_domain_data[:, :, start_idx:end_idx], dtype=cp.complex64)
+        spatial_chunk_gpu = cp.asarray(
+            spatial_domain_data[:, :, start_idx:end_idx], dtype=cp.complex64)
 
-        # Subtract DC component
+        # Step 1: Subtract DC component
         spatial_chunk_gpu = subtract_dc_component(spatial_chunk_gpu)
 
-        # Apply FFT on GPU
+        # Step 2: Apply Dispersion Compensation
+        spatial_chunk_gpu = apply_dispersion_compensation(spatial_chunk_gpu)
+
+        # Step 3: Apply FFT on GPU
         freq_chunk_gpu = cp.fft.fft2(spatial_chunk_gpu, axes=(0, 1))
 
         # Move chunk back to CPU
@@ -85,6 +94,7 @@ def process_oct_data(spatial_domain_data):
         cp._default_memory_pool.free_all_blocks()
 
     return freq_domain
+
 
 def interpolate_bicubic(data, scale=2):
     """
@@ -97,20 +107,39 @@ def interpolate_bicubic(data, scale=2):
 
     # Compute new shape
     zoom_factors = (scale, scale, 1)  # Scale only spatial dimensions
-    upscaled_gpu = zoom(data_gpu, zoom_factors, order=3)  # Bicubic interpolation (order=3)
+    # Bicubic interpolation (order=3)
+    upscaled_gpu = zoom(data_gpu, zoom_factors, order=3)
 
     # Move back to CPU
     return cp.asnumpy(upscaled_gpu)
+
 
 def subtract_dc_component(spatial_chunk_gpu):
     """
     Subtract the DC component (mean intensity) for each pixel across all slices.
     """
     # Compute the DC component per pixel (mean across slices)
-    dc_component = cp.mean(spatial_chunk_gpu, axis=2,dtype = cp.float32, keepdims=True)
+    dc_component = cp.mean(spatial_chunk_gpu, axis=2,
+                           dtype=cp.float32, keepdims=True)
 
     # Subtract the mean from the entire image chunk
     return spatial_chunk_gpu - dc_component
+
+
+def apply_dispersion_compensation(spatial_chunk_gpu):
+    """
+    Apply phase correction for dispersion compensation.
+    Assumes a precomputed phase correction array based on system calibration.
+    """
+    # Define the dispersion compensation phase correction parameters
+    x_dim, y_dim, num_slices = spatial_chunk_gpu.shape
+    k = cp.linspace(-1, 1, num_slices)  # Wavenumber domain
+    # Quadratic phase shift
+    phase_correction = cp.exp(-1j * (0.1 * k**2))
+
+    # Apply phase correction along the depth axis
+    return spatial_chunk_gpu * phase_correction.reshape(1, 1, num_slices)
+
 
 if __name__ == "__main__":
     start_time = time.time()
