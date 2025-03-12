@@ -3,9 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from scipy.io import loadmat, savemat
 import cupy as cp
-import cupyx.scipy.ndimage as cpx_ndimage
 import numpy as np
-from cupyx.scipy.ndimage import zoom
 
 def oct_loader(input_folder, output_folder):
     """
@@ -44,9 +42,6 @@ def process_file(input_folder, output_folder, file_name):
     spatial_domain_data = mat_data['raw']
     print(f"Spatial domain data shape: {spatial_domain_data.shape}")
 
-    # Apply bicubic interpolation in the spatial domain
-    spatial_domain_data = interpolate_bicubic(spatial_domain_data, scale=2)
-
     # Apply DC subtraction and FFT
     freq_domain = process_oct_data(spatial_domain_data)
 
@@ -76,9 +71,6 @@ def process_oct_data(spatial_domain_data):
         # Subtract DC component
         spatial_chunk_gpu = subtract_dc_component(spatial_chunk_gpu)
 
-        # Apply Gaussian Filtering on GPU
-        spatial_chunk_gpu = cpx_ndimage.gaussian_filter(spatial_chunk_gpu, sigma=1)
-
         # Apply FFT on GPU
         freq_chunk_gpu = cp.fft.fft2(spatial_chunk_gpu, axes=(0, 1))
 
@@ -89,22 +81,6 @@ def process_oct_data(spatial_domain_data):
         cp._default_memory_pool.free_all_blocks()
 
     return freq_domain
-
-def interpolate_bicubic(data, scale=2):
-    """
-    Apply bicubic interpolation to upscale the input 3D OCT data.
-    """
-    print(f"Applying bicubic interpolation with scale {scale}...")
-
-    # Move data to GPU
-    data_gpu = cp.asarray(data, dtype=cp.float32)
-
-    # Compute new shape
-    zoom_factors = (scale, scale, 1)  # Scale only spatial dimensions
-    upscaled_gpu = zoom(data_gpu, zoom_factors, order=3)  # Bicubic interpolation (order=3)
-
-    # Move back to CPU
-    return cp.asnumpy(upscaled_gpu)
 
 def subtract_dc_component(spatial_chunk_gpu):
     """
@@ -119,7 +95,7 @@ def subtract_dc_component(spatial_chunk_gpu):
 if __name__ == "__main__":
     start_time = time.time()
 
-    input_folder = "Input (RAW data) - AMD 2"  # Folder containing spatial domain .mat files
+    input_folder = "Dataset 1 (RAW) - AMD 2"  # Folder containing spatial domain .mat files
     output_folder = "Output"  # Folder to save frequency domain .mat files
 
     # Run the loader
