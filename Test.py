@@ -95,7 +95,7 @@ def subtract_dc_component(spatial_chunk_gpu):
 if __name__ == "__main__":
     start_time = time.time()
 
-    input_folder = "Dataset 1 (RAW) - AMD 2"  # Folder containing spatial domain .mat files
+    input_folder = "Input (RAW data) - AMD 2"  # Folder containing spatial domain .mat files
     output_folder = "Output"  # Folder to save frequency domain .mat files
 
     # Run the loader
