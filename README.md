@@ -1,1 +1,7 @@
+<<<<<<< Updated upstream
 # OCT-Processing-Pipeline
+=======
+# OCT-Processing-Pipeline
+This project aims to revolutionize an Optical Coherence Tomography (OCT) signal processing, segmentation, and classification pipeline; leveraging cutting-edge GPU-based acceleration, in order to mimic an ophthalmologist's performance in diagnosing retinal and other eye conditions. 🧑🏽‍⚕️👁️🔍
+Hi
+>>>>>>> Stashed changes
