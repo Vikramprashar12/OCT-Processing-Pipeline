@@ -1,0 +1,4 @@
+cupy_cuda12x==12.3.0
+matplotlib==3.7.5
+numpy==1.24.4
+scipy==1.15.1
