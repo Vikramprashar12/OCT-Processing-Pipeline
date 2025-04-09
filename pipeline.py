@@ -14,15 +14,14 @@ def process(file_path):
     data = scipy.io.loadmat(file_path)
     print("Loaded using scipy.io.loadmat")
 
-    show_bscan_only(data['images'], title="Original Image")
-
+    # show_bscan_only(data['images'], data['layerMaps'], title="Original Image")
     images_dc = dc_subtract(data['images'])
-    show_bscan_only(images_dc, title="After DC Subtraction")
+    show_bscan_only(images_dc, data['layerMaps'], title="After DC Subtraction")
 
 
-def show_bscan_only(images, bscan_index=50, title="B-scan"):
+def show_bscan_only(images, layerMaps=None, bscan_index=50, title="B-scan"):
     """
-    Interactive B-scan viewer with slider (no layers).
+    Interactive B-scan viewer with slider, optionally displaying segmentation layers.
     """
     num_bscans = images.shape[2]
 
@@ -30,6 +29,14 @@ def show_bscan_only(images, bscan_index=50, title="B-scan"):
     plt.subplots_adjust(bottom=0.2)
     img_display = ax.imshow(
         images[:, :, bscan_index], cmap='gray', aspect='auto')
+
+    layer_lines = []
+    if layerMaps is not None:
+        for i in range(layerMaps.shape[2]):
+            line, = ax.plot(np.arange(layerMaps.shape[1]),
+                            layerMaps[bscan_index, :, i], label=f'Layer {i+1}')
+            layer_lines.append(line)
+        ax.legend()
 
     ax.set_title(f'{title} {bscan_index}')
     ax.set_xlabel('A-scan (x-axis)')
@@ -43,6 +50,9 @@ def show_bscan_only(images, bscan_index=50, title="B-scan"):
     def update(val):
         idx = int(slider.val)
         img_display.set_data(images[:, :, idx])
+        if layerMaps is not None:
+            for i in range(layerMaps.shape[2]):
+                layer_lines[i].set_ydata(layerMaps[idx, :, i])
         ax.set_title(f'{title} {idx}')
         fig.canvas.draw_idle()
 
