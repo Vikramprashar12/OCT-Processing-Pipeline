@@ -76,8 +76,11 @@ def process_file(input_folder, output_folder, file_name):
         spatial_domain_data = mat_data['raw']
         print(f"Spatial domain data shape: {spatial_domain_data.shape}")
 
-        # Step 1: Apply bicubic interpolation to increase resolution in x, y dimensions
-        spatial_domain_data = interpolate_bicubic(spatial_domain_data, scale=2)
+         # Step 1: Apply bicubic interpolation of A-lines (depth-wise) instead of full 2D image
+        spatial_domain_data = interpolate_alines_bicubic_gpu(spatial_domain_data, scale=0.9)
+
+        # # Uncomment below to use old bicubic interpolation (full image scaling)
+        # spatial_domain_data = interpolate_bicubic(spatial_domain_data, scale=0.9)
 
         # Step 2: Process the interpolated data (DC subtraction, compensation, FFT)
         freq_domain = process_oct_data(spatial_domain_data, file_name)
@@ -127,26 +130,29 @@ def process_oct_data(spatial_domain_data, file_name):
         freq_domain[:, :, start_idx:end_idx] = cp.asnumpy(freq_chunk_gpu)
 
         # Free GPU memory
-        cp._default_memory_pool.free_all_blocks()
+        cp.get_default_memory_pool().free_all_blocks()
 
     return freq_domain
 
-def interpolate_bicubic(data, scale=2):
-    """
-    Apply bicubic interpolation to upscale the input 3D OCT volume in spatial dimensions.
-    """
-    print(f"Applying bicubic interpolation with scale {scale}...")
+# def interpolate_bicubic(data, scale=2):
+#     """
+#     Old method: Apply bicubic interpolation to entire 2D slices
+#     This is commented out and replaced by more efficient A-line interpolation
+#     """
+#     print(f"Applying bicubic interpolation with scale {scale}...")
+#     data_gpu = cp.asarray(data, dtype=cp.float32)
+#     zoom_factors = (scale, scale, 1)
+#     upscaled_gpu = zoom(data_gpu, zoom_factors, order=3)
+#     return cp.asnumpy(upscaled_gpu)
 
-    # Move data to GPU
+def interpolate_alines_bicubic_gpu(data, scale=2):
+    """
+    Alternative using CuPy's zoom for bicubic interpolation along the depth axis.
+    Less memory efficient than kernel-based interpolation.
+    """
     data_gpu = cp.asarray(data, dtype=cp.float32)
-
-    # Only scale height and width, not depth
-    zoom_factors = (scale, scale, 1)
-
-    # Bicubic interpolation (order=3)
-    upscaled_gpu = zoom(data_gpu, zoom_factors, order=3)
-
-    # Move back to CPU
+    zoom_factors = (scale, 1, 1)  # Only upscale along height (depth axis)
+    upscaled_gpu = zoom(data_gpu, zoom=zoom_factors, order=3)
     return cp.asnumpy(upscaled_gpu)
 
 def subtract_dc_component(spatial_chunk_gpu):
