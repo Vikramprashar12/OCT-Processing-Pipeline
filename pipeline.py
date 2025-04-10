@@ -6,6 +6,7 @@ import cupy as cp
 import cupyx.scipy.ndimage as cpx_nd
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+from skimage.restoration import denoise_nl_means, estimate_sigma
 
 
 def process(file_path):
@@ -16,7 +17,12 @@ def process(file_path):
 
     # show_bscan_only(data['images'], data['layerMaps'], title="Original Image")
     images_dc = dc_subtract(data['images'])
-    show_bscan_only(images_dc, data['layerMaps'], title="After DC Subtraction")
+    # show_bscan_only(images_dc, data['layerMaps'], title="After DC Subtraction")
+
+    for a in [1, 1.5, 2, 2.5, 3]:
+        filtered = median_filter(images_dc, size=a)
+        show_bscan_only(
+            filtered, title=f"Median Filter Denoising Size = {a}", layerMaps=data['layerMaps'])
 
 
 def show_bscan_only(images, layerMaps=None, bscan_index=50, title="B-scan"):
@@ -99,13 +105,36 @@ def dispersion_compensate(images, beta=1.0, gamma=0.0):
     return cp.asnumpy(cp.abs(result_gpu))
 
 
-def gaussian_lowpass(images, sigma=(3, 3, 0)):
+def median_filter(images, size=3):
     """
-    Apply a Gaussian low-pass filter using the specified sigma values.
+    Apply a median filter to each B-scan individually using CuPy.
     """
     images_gpu = cp.asarray(images)
-    lowpass = cpx_nd.gaussian_filter(images_gpu, sigma=sigma)
-    return cp.asnumpy(lowpass)
+    result_gpu = cp.empty_like(images_gpu)
+    for i in range(images_gpu.shape[2]):
+        result_gpu[:, :, i] = cpx_nd.median_filter(
+            images_gpu[:, :, i], size=size, mode='nearest')
+    return cp.asnumpy(result_gpu)
+
+
+def non_local_means_denoise(images, patch_size=10, patch_distance=12, h=0.6):
+    """
+    Apply non-local means denoising using scikit-image for each B-scan.
+    """
+    result = []
+    for i in range(images.shape[2]):
+        img = images[:, :, i].astype(np.float32)
+        sigma_est = np.mean(estimate_sigma(img, channel_axis=None))
+        denoised = denoise_nl_means(
+            img,
+            h=h * sigma_est,
+            patch_size=patch_size,
+            patch_distance=patch_distance,
+            channel_axis=None,
+            fast_mode=True,
+        )
+        result.append(denoised)
+    return np.stack(result, axis=-1)
 
 
 def main():
@@ -131,13 +160,6 @@ if __name__ == "__main__":
 
 Removing the functions I am not going to use
 
-def gaussian_lowpass(images, sigma=(3, 3, 0)):
-    """
-    Apply a Gaussian low-pass filter using the specified sigma values.
-    """
-    images_gpu = cp.asarray(images)
-    lowpass = cpx_nd.gaussian_filter(images_gpu, sigma=sigma)
-    return cp.asnumpy(lowpass)
 
 
 def auto_canny(image, sigma=0.33, blur_sigma=1.0):
@@ -167,10 +189,6 @@ def auto_canny(image, sigma=0.33, blur_sigma=1.0):
 '''
 '''
 This code was in the process function for gaussian filtering and canny edge detection
-
-    images_lowpass_soft = gaussian_lowpass(images_dc, sigma=(3, 3, 5))
-    show_bscan_only(images_lowpass_soft,
-                    title=f"Gaussian Low-Pass ")
 
     processed_stack = []
     for i in range(images_lowpass_soft.shape[2]):
